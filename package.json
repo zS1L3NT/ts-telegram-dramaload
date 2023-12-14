@@ -1,0 +1,28 @@
+{
+	"name": "ts-telegram-dramaload",
+	"description": "",
+	"author": "zS1L3NT <dev@zectan.com> (https://www.zectan.com)",
+	"license": "GPL-3.0",
+	"scripts": {
+		"start": "bun src/app.ts",
+		"lint": "tsc --noEmit && eslint src --fix && prettier src --write && rm tsconfig.tsbuildinfo"
+	},
+	"dependencies": {
+		"axios": "^1.6.2",
+		"cheerio": "^1.0.0-rc.12",
+		"node-telegram-bot-api": "^0.64.0",
+		"puppeteer": "^21.6.1"
+	},
+	"devDependencies": {
+		"@types/node-telegram-bot-api": "^0.64.0",
+		"@typescript-eslint/eslint-plugin": "latest",
+		"@typescript-eslint/parser": "latest",
+		"bun-types": "latest",
+		"eslint": "latest",
+		"eslint-config-prettier": "latest",
+		"eslint-plugin-simple-import-sort": "latest",
+		"prettier": "latest",
+		"ts-node": "latest",
+		"typescript": "latest"
+	}
+}
