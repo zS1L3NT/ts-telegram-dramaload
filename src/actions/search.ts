@@ -8,6 +8,7 @@ import Action from "./action"
 
 export default class SearchAction extends Action<string> {
 	override async start() {
+		await this.bot.deleteMessage(this.chatId, +this.cacheKey)
 		const html = await axios.get(
 			"https://draplay2.pro/search.html?keyword=" + encodeURIComponent(this.action),
 		)

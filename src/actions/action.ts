@@ -3,13 +3,13 @@ import TelegramBot from "node-telegram-bot-api"
 import { IAction } from "../app"
 
 export default abstract class Action<T extends IAction | any = any> {
-	protected messageId = ""
+	protected messageId = -1
 	abstract start(): Promise<void>
 
 	constructor(
 		protected readonly bot: TelegramBot,
-		protected readonly chatId: string,
-		protected readonly cacheKey: string,
+		protected readonly chatId: number,
+		protected readonly cacheKey: number,
 		protected readonly action: T,
 		protected readonly metadata: string,
 	) {}
@@ -17,7 +17,7 @@ export default abstract class Action<T extends IAction | any = any> {
 	async setup(message: string) {
 		this.messageId = await this.bot
 			.sendMessage(this.chatId, this.metadata + message, { parse_mode: "Markdown" })
-			.then(m => m.message_id + "")
+			.then(m => m.message_id)
 		return this
 	}
 

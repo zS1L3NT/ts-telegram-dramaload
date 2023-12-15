@@ -49,7 +49,7 @@ bot.onText(/^\/start$/, message => {
 
 bot.onText(/^\/search (.*)$/, async ({ text, message_id, chat }) => {
 	const search = text!.slice(8)
-	await new SearchAction(bot, chat.id + "", message_id + "", search, "")
+	await new SearchAction(bot, chat.id, message_id, search, "")
 		.setup(`Searching for "${search}"...`)
 		.then(search => search.start())
 })
@@ -58,11 +58,11 @@ bot.on("callback_query", async ({ message, data }) => {
 	if (!message || !data) return
 
 	const [id, i] = data.split(",")
-	const action = (await getCache(id + ""))?.[+i!]
+	const action = (await getCache(+id!))?.[+i!]
 	if (!action) return
 
-	const chatId = message.chat.id + ""
-	const messageId = message.message_id + ""
+	const chatId = message.chat.id
+	const messageId = message.message_id
 	switch (action.type) {
 		case "Episodes":
 			await new EpisodesAction(bot, chatId, messageId, action, `*${action.show}*\n\n`)
