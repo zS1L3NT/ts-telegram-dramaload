@@ -16,7 +16,7 @@ export const getCache = async <T extends Action>(key: string): Promise<T[] | nul
 
 export const setCache = async (key: string, value: Action[]) => {
 	cache[key] = value
-	await Bun.write(PATH, JSON.stringify(cache, null, 4))
+	await Bun.write(PATH, JSON.stringify(cache))
 }
 
 export const getRCLock = () => rclock
