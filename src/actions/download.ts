@@ -60,7 +60,7 @@ export default class Download {
 			const checkframe = await checkiframe?.contentFrame()
 			if (await page.$(".mirror_link")) {
 				console.log("[PPET] No recaptcha found! Fetching link...")
-				const link = await page.$(".mirror_link:first-of-type a:last-of-type")
+				const link = await page.$(".mirror_link:first-of-type div:last-of-type a")
 				const href = await link!.evaluate(e => e.getAttribute("href"))
 
 				browser.close()
@@ -168,7 +168,7 @@ export default class Download {
 			return
 		}
 
-		const link = await page.waitForSelector(".mirror_link:first-of-type a:last-of-type")
+		const link = await page.waitForSelector(".mirror_link:first-of-type div:last-of-type a")
 		const href = await link!.evaluate(e => e.getAttribute("href"))
 
 		browser.close()
