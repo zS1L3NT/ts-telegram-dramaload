@@ -1,8 +1,8 @@
 import TelegramBot from "node-telegram-bot-api"
 
-import { Action as ActionType } from "../app"
+import { IAction } from "../app"
 
-export default abstract class Action<T extends ActionType> {
+export default abstract class Action<T extends IAction | any = any> {
 	protected messageId = ""
 	abstract start(): Promise<void>
 

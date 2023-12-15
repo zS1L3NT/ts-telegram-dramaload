@@ -2,15 +2,15 @@ import axios from "axios"
 import express from "express"
 import TelegramBot from "node-telegram-bot-api"
 
-import Download from "./actions/download"
-import episodes from "./actions/episodes"
-import search from "./actions/search"
+import DownloadAction from "./actions/download"
+import EpisodesAction from "./actions/episodes"
+import SearchAction from "./actions/search"
 import { getCache, getRCLock, setCache, setRCLock } from "./cache"
 
-export type EpisodesAction = { type: "Episodes"; image: string; show: string }
-export type DownloadAction = { type: "Download"; show: string; episode: number }
-export type RecaptchaAction = { type: "Recaptcha"; squares: number[] | null; date: number }
-export type Action = EpisodesAction | DownloadAction | RecaptchaAction
+export type IEpisodesAction = { type: "Episodes"; image: string; show: string }
+export type IDownloadAction = { type: "Download"; show: string; episode: number }
+export type IRecaptchaAction = { type: "Recaptcha"; squares: number[] | null; date: number }
+export type IAction = IEpisodesAction | IDownloadAction | IRecaptchaAction
 
 axios.defaults.headers.common["Accept-Encoding"] = "gzip"
 const bot = new TelegramBot(Bun.env.TELEGRAM_API_KEY, { polling: true })
@@ -29,7 +29,7 @@ bot.onText(/^.*$/, async message => {
 	setRCLock(null)
 	await setCache(lock, [
 		{
-			...((await getCache(lock))![0]! as RecaptchaAction),
+			...((await getCache(lock))![0]! as IRecaptchaAction),
 			squares: message.text.split(",").map(v => +v - 1),
 		},
 	])
@@ -48,9 +48,10 @@ bot.onText(/^\/start$/, message => {
 })
 
 bot.onText(/^\/search (.*)$/, async ({ text, message_id, chat }) => {
-	search(text!.slice(8), message_id + "", (message, options) =>
-		bot.sendMessage(chat.id, message, options),
-	)
+	const search = text!.slice(8)
+	await new SearchAction(bot, chat.id + "", message_id + "", search, "")
+		.setup(`Searching for "${search}"...`)
+		.then(search => search.start())
 })
 
 bot.on("callback_query", async ({ message, data }) => {
@@ -64,15 +65,12 @@ bot.on("callback_query", async ({ message, data }) => {
 	const messageId = message.message_id + ""
 	switch (action.type) {
 		case "Episodes":
-			episodes(action, message.message_id + "", (image, options) =>
-				bot.sendPhoto(chatId, image, options, {
-					filename: action.show + ".jpg",
-					contentType: "image/jpeg",
-				}),
-			)
+			await new EpisodesAction(bot, chatId, messageId, action, `*${action.show}*\n\n`)
+				.setup(`Fetching episodes...`)
+				.then(episodes => episodes.start())
 			break
 		case "Download":
-			await new Download(
+			await new DownloadAction(
 				bot,
 				chatId,
 				messageId,

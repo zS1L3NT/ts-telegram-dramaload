@@ -6,13 +6,13 @@ import { resolve } from "path"
 import puppeteer from "puppeteer"
 import { Stream } from "stream"
 
-import { DownloadAction, RecaptchaAction } from "../app"
+import { IDownloadAction, IRecaptchaAction } from "../app"
 import { getCache, setCache, setRCLock } from "../cache"
 import Action from "./action"
 
 const time = (ms: number) => new Promise(res => setTimeout(res, ms))
 
-export default class Download extends Action<DownloadAction> {
+export default class DownloadAction extends Action<IDownloadAction> {
 	private lastUpdate = Date.now()
 
 	override async start() {
@@ -118,14 +118,17 @@ export default class Download extends Action<DownloadAction> {
 			},
 		])
 
-		while (Date.now() - (await getCache<RecaptchaAction>(this.messageId))![0]!.date < 120_000) {
-			if ((await getCache<RecaptchaAction>(this.messageId))![0]!.squares) break
+		while (
+			Date.now() - (await getCache<IRecaptchaAction>(this.messageId))![0]!.date <
+			120_000
+		) {
+			if ((await getCache<IRecaptchaAction>(this.messageId))![0]!.squares) break
 			await time(3000)
 		}
 
 		await this.bot.deleteMessage(this.chatId, photoId)
 
-		const { squares } = (await getCache<RecaptchaAction>(this.messageId))![0]!
+		const { squares } = (await getCache<IRecaptchaAction>(this.messageId))![0]!
 		if (!squares) {
 			await this.log("Recaptcha timed out")
 			browser.close()
