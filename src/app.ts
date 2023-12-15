@@ -1,7 +1,8 @@
 import axios from "axios"
+import express from "express"
 import TelegramBot from "node-telegram-bot-api"
 
-import download from "./actions/download"
+import Download from "./actions/download"
 import episodes from "./actions/episodes"
 import search from "./actions/search"
 import { getCache, getRCLock, setCache, setRCLock } from "./cache"
@@ -57,7 +58,8 @@ bot.on("callback_query", async ({ message, data }) => {
 	const action = (await getCache(id + ""))?.[+i!]
 	if (!action) return
 
-	const chatId = message.chat.id
+	const chatId = message.chat.id + ""
+	const messageId = message.message_id + ""
 	switch (action.type) {
 		case "Episodes":
 			episodes(action, message.message_id + "", (image, options) =>
@@ -68,38 +70,13 @@ bot.on("callback_query", async ({ message, data }) => {
 			)
 			break
 		case "Download":
-			download(
-				action,
-				(image, size) =>
-					bot
-						.sendPhoto(
-							chatId,
-							image,
-							{
-								caption: [
-									"Please type the square numbers that match the criteria in comma seperated form",
-									`Numbers must be between 1 ~ ${Math.pow(
-										size,
-										2,
-									)} since the image is ${size}x${size}. Example:`,
-									"`1,3,4,9`\n`8,11,15,16`",
-								].join("\n\n"),
-								parse_mode: "Markdown",
-							},
-							{
-								filename: action.show + ".jpg",
-								contentType: "image/jpeg",
-							},
-						)
-						.then(m => m.message_id + ""),
-				async video => {
-					await bot.sendMessage(
-						chatId,
-						`**${action.show}**\n*Episode ${action.episode}*\n${video}`,
-						{ parse_mode: "Markdown" },
-					)
-				},
-			)
+			await new Download(bot, chatId, messageId, action).start()
 			break
 	}
 })
+
+const PORT = 3000
+const app = express()
+
+app.use(express.static("videos"))
+app.listen(PORT, () => console.log(`Serving files on port ${PORT}`))

@@ -5,3 +5,4 @@
 **/*.test.ts
 **/.vscode
 cache.json
+videos
