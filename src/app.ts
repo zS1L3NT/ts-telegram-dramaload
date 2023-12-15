@@ -19,6 +19,8 @@ bot.onText(/^.*$/, async message => {
 	const lock = getRCLock()
 	if (!lock) return
 
+	await bot.deleteMessage(message.chat.id, message.message_id)
+
 	if (!message.text?.replaceAll(" ", "").match(/((\d+,)+)?\d+/)) {
 		bot.sendMessage(message.chat.id, "Invalid input! Input must be comma seperated numbers")
 		return
@@ -70,8 +72,15 @@ bot.on("callback_query", async ({ message, data }) => {
 			)
 			break
 		case "Download":
-			await new Download(bot, chatId, messageId, action).start()
-			break
+			await new Download(
+				bot,
+				chatId,
+				messageId,
+				action,
+				`*${action.show}*\n_Episode ${action.episode}_\n\n`,
+			)
+				.setup("Fetching download url...")
+				.then(download => download.start())
 	}
 })
 
