@@ -5,7 +5,7 @@ import { InlineKeyboardButton } from "node-telegram-bot-api"
 import { caches } from "../db"
 import Handler from "./handler"
 
-export default class SearchAction extends Handler<string> {
+export default class SearchHandler extends Handler<string> {
 	override async start() {
 		await this.bot.deleteMessage(this.chatId, this.messageId)
 		const html = await axios.get("https://draplay2.pro/search.html?keyword=" + encodeURIComponent(this.data))

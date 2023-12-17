@@ -2,10 +2,10 @@ import axios from "axios"
 import express from "express"
 import TelegramBot from "node-telegram-bot-api"
 
-import DownloadHandler from "./actions/download"
-import EpisodesHandler from "./actions/episodes"
-import SearchAction from "./actions/search"
 import { Cache, caches, DownloadCache, EpisodesCache, sessions, users } from "./db"
+import DownloadHandler from "./handlers/download"
+import EpisodesHandler from "./handlers/episodes"
+import SearchHandler from "./handlers/search"
 
 axios.defaults.headers.common["Accept-Encoding"] = "gzip"
 const bot = new TelegramBot(Bun.env.TELEGRAM_API_KEY, { polling: true })
@@ -52,7 +52,7 @@ bot.onText(/^\/search/, async message => {
 	const { text, message_id, chat } = message
 	const search = text!.slice(8)
 
-	new SearchAction(bot, chat.id, message_id, search, "")
+	new SearchHandler(bot, chat.id, message_id, search, "")
 		.setup(`Searching for "${search}"...`)
 		.then(search => search.start())
 		.catch(e => {
