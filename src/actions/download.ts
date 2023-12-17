@@ -54,7 +54,10 @@ export default class DownloadAction extends Action<IDownloadAction> {
 
 	override async start() {
 		const slug =
-			this.action.show.replaceAll(/[()]/g, "").replaceAll(" ", "-").toLowerCase() +
+			this.action.show
+				.replaceAll(/[^a-zA-Z0-9\s]/g, "")
+				.replaceAll(" ", "-")
+				.toLowerCase() +
 			"-episode-" +
 			this.action.episode
 		const html = await axios.get(`https://draplay2.pro/videos/${slug}`).then(r => r.data)

@@ -9,8 +9,10 @@ import Action from "./action"
 export default class EpisodesAction extends Action<IEpisodesAction> {
 	override async start() {
 		const slug =
-			this.action.show.replaceAll(/[()]/g, "").replaceAll(" ", "-").toLowerCase() +
-			"-episode-1"
+			this.action.show
+				.replaceAll(/[^a-zA-Z0-9\s]/g, "")
+				.replaceAll(" ", "-")
+				.toLowerCase() + "-episode-1"
 		const html = await axios.get("https://draplay2.pro/videos/" + slug)
 
 		const episodes = [
