@@ -58,18 +58,31 @@ bot.onText(/^\/start/, async message => {
 		return
 	}
 
-	bot.sendMessage(
-		message.chat.id,
-		["Welcome to Dramaload!", "Search for a kdrama name with the following command:", "`/search <KDrama>`"].join(
-			"\n\n",
-		),
-		{ parse_mode: "Markdown" },
-	)
+	if (message.chat.type !== "private") {
+		bot.sendMessage(message.chat.id, "I only work in private chats, so please message me directly.")
+	} else {
+		bot.sendMessage(
+			message.chat.id,
+			[
+				"Welcome to Dramaload!",
+				"",
+				"Search for a kdrama name with the following command:",
+				"",
+				"`/search <KDrama>`",
+			].join("\n"),
+			{ parse_mode: "Markdown" },
+		)
+	}
 })
 
 bot.onText(/^\/search/, async message => {
 	if (await isAuthenticated(message.from?.username)) {
 		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
+		return
+	}
+
+	if (message.chat.type !== "private") {
+		bot.sendMessage(message.chat.id, "I only work in private chats, so please message me directly.")
 		return
 	}
 
