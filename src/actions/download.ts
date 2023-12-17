@@ -89,11 +89,12 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			}
 
 			if (found) {
-				const link = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
-				const href = await link.getAttribute("href")
+				const a = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
+				const href = await a.getAttribute("href")
+				const quality = await a.getText().then(t => t.match(/\d+P/)![0]!)
 
 				await driver.quit()
-				await this.respond(href)
+				await this.respond(href, quality)
 				return
 			}
 
@@ -198,11 +199,12 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			return
 		}
 
-		const link = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
-		const href = await link.getAttribute("href")
+		const a = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
+		const href = await a.getAttribute("href")
+		const quality = await a.getText().then(t => t.match(/\d+P/)![0]!)
 
 		await driver.quit()
-		await this.respond(href)
+		await this.respond(href, quality)
 	}
 
 	private formatSize(size: number) {
@@ -210,8 +212,9 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		return (size / Math.pow(1024, i)).toFixed(2) + " " + ["B", "kB", "MB", "GB", "TB"][i]
 	}
 
-	private formatProgress(event: AxiosProgressEvent) {
+	private formatProgress(event: AxiosProgressEvent, quality: string) {
 		return [
+			`Quality: ${quality.toLowerCase()}`,
 			event.total !== undefined
 				? `Progress: ${this.formatSize(event.loaded)} / ${this.formatSize(event.total)}${
 						event.progress !== undefined ? ` (${(event.progress * 100).toFixed(1)}%)` : ""
@@ -224,7 +227,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			.join("\n")
 	}
 
-	private async respond(video: string) {
+	private async respond(video: string, quality: string) {
 		await this.log("Downloading video...")
 
 		if (!(await exists(resolve("videos", this.action.show)))) {
@@ -238,7 +241,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 					if (Date.now() - this.lastUpdate < 1000) return
 
 					this.lastUpdate = Date.now()
-					this.log(this.formatProgress(progress))
+					this.log(this.formatProgress(progress, quality))
 				},
 			})
 			.then(res => res.data)
@@ -251,11 +254,12 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			)
 			.on("finish", () => {
 				this.log(
-					[
-						"https://dramaload.zectan.com",
-						encodeURIComponent(this.action.show),
-						(this.action.episode + "").padStart(2, "0") + ".mp4",
-					].join("/"),
+					`Quality: ${quality.toLowerCase()}\n` +
+						[
+							"https://dramaload.zectan.com",
+							encodeURIComponent(this.action.show),
+							(this.action.episode + "").padStart(2, "0") + ".mp4",
+						].join("/"),
 				)
 			})
 	}
