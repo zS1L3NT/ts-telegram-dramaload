@@ -5,24 +5,38 @@ import TelegramBot from "node-telegram-bot-api"
 import DownloadAction from "./actions/download"
 import EpisodesAction from "./actions/episodes"
 import SearchAction from "./actions/search"
-import { getCache, getSession, IRecaptchaAction, setCache, setSession } from "./db"
+import {
+	authenticate,
+	deauthenticate,
+	getCache,
+	getSession,
+	IRecaptchaAction,
+	isAuthenticated,
+	listAuthenticated,
+	setCache,
+	setSession,
+} from "./db"
 
 axios.defaults.headers.common["Accept-Encoding"] = "gzip"
 const bot = new TelegramBot(Bun.env.TELEGRAM_API_KEY, { polling: true })
 
-bot.onText(/^.*$/, async message => {
-	if (message.from?.username !== "zS1L3NT") {
-		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+bot.onText(/^[^/]/, async message => {
+	if (await isAuthenticated(message.from?.username)) {
+		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
 
 	const session = await getSession(message.chat.id)
 	if (!session) return
 
-	await bot.deleteMessage(message.chat.id, message.message_id)
 	if (message.text?.trim().toLowerCase() === "stop") {
-		await setSession(message.chat.id, null)
+		await Promise.allSettled([
+			bot.deleteMessage(message.chat.id, message.message_id),
+			setSession(message.chat.id, null),
+		])
 	} else if (session.recaptcha) {
+		await bot.deleteMessage(message.chat.id, message.message_id)
+
 		if (!message.text?.replaceAll(" ", "").match(/((\d+,)+)?\d+/)) {
 			bot.sendMessage(message.chat.id, "Invalid input! Input must be comma seperated numbers")
 			return
@@ -38,9 +52,9 @@ bot.onText(/^.*$/, async message => {
 	}
 })
 
-bot.onText(/^\/start$/, message => {
-	if (message.from?.username !== "zS1L3NT") {
-		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+bot.onText(/^\/start/, async message => {
+	if (await isAuthenticated(message.from?.username)) {
+		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
 
@@ -53,9 +67,9 @@ bot.onText(/^\/start$/, message => {
 	)
 })
 
-bot.onText(/^\/search (.*)$/, async message => {
-	if (message.from?.username !== "zS1L3NT") {
-		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+bot.onText(/^\/search/, async message => {
+	if (await isAuthenticated(message.from?.username)) {
+		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
 
@@ -71,8 +85,47 @@ bot.onText(/^\/search (.*)$/, async message => {
 		})
 })
 
-bot.on("callback_query", async ({ message, data }) => {
+bot.onText(/^\/auth/, async message => {
+	if (message.from?.username !== "zS1L3NT") {
+		bot.sendMessage(message.chat.id, "You aren't authorized to use this command.")
+		return
+	}
+
+	const parts = message.text!.split(" ").slice(1)
+	const mode = parts.shift()
+	if (!mode || !["ls", "add", "remove"].includes(mode)) {
+		bot.sendMessage(message.chat.id, "Please provide a valid mode. (ls, add, remove)")
+		return
+	}
+
+	if (mode === "ls") {
+		bot.sendMessage(message.chat.id, "*Users*\n" + (await listAuthenticated()).map(v => "@" + v).join("\n"), {
+			parse_mode: "Markdown",
+		})
+		return
+	}
+
+	const user = parts.shift()
+	if (!user || user[0] !== "@") {
+		bot.sendMessage(message.chat.id, "Please provide a valid username.")
+		return
+	}
+
+	if (mode === "add") {
+		await authenticate(user.slice(1))
+		bot.sendMessage(message.chat.id, `Authenticated ${user}`)
+	} else {
+		await deauthenticate(user.slice(1))
+		bot.sendMessage(message.chat.id, `Deauthenticated ${user}`)
+	}
+})
+
+bot.on("callback_query", async ({ from, message, data }) => {
 	if (!message || !data) return
+	if (await isAuthenticated(from.username)) {
+		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
+		return
+	}
 
 	const [id, i] = data.split(",").map(v => +v) as [number, number]
 	const action = (await getCache(message.chat.id, id))?.[i]

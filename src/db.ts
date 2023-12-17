@@ -16,10 +16,15 @@ type Session = {
 	recaptcha: number | null
 }
 
+type User = {
+	username: string
+}
+
 const client = new MongoClient(process.env.MONGODB_URI)
 const database = client.db("dramaload")
 const messages = database.collection<Message>("messages")
 const sessions = database.collection<Session>("sessions")
+const users = database.collection<User>("users")
 
 await sessions.deleteMany({})
 
@@ -41,4 +46,21 @@ export const setSession = async (chatId: number, session: Omit<Session, "chatId"
 	} else {
 		await sessions.deleteOne({ chatId })
 	}
+}
+
+export const listAuthenticated = async () => {
+	return (await users.find().toArray()).map(v => v.username)
+}
+
+export const isAuthenticated = async (username?: string) => {
+	if (!username) return false
+	return !!(await users.findOne({ username }))
+}
+
+export const authenticate = async (username: string) => {
+	await users.updateOne({ username }, { $set: { username } }, { upsert: true })
+}
+
+export const deauthenticate = async (username: string) => {
+	await users.deleteMany({ username })
 }
