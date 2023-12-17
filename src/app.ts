@@ -19,11 +19,10 @@ bot.onText(/^.*$/, async message => {
 	const session = await getSession(message.chat.id)
 	if (!session) return
 
-	if (message.text?.toLowerCase() === "stop") {
-		await Promise.all([bot.deleteMessage(message.chat.id, message.message_id), setSession(message.chat.id, null)])
+	await bot.deleteMessage(message.chat.id, message.message_id)
+	if (message.text?.trim().toLowerCase() === "stop") {
+		await setSession(message.chat.id, null)
 	} else if (session.recaptcha) {
-		await bot.deleteMessage(message.chat.id, message.message_id)
-
 		if (!message.text?.replaceAll(" ", "").match(/((\d+,)+)?\d+/)) {
 			bot.sendMessage(message.chat.id, "Invalid input! Input must be comma seperated numbers")
 			return
@@ -96,7 +95,13 @@ bot.on("callback_query", async ({ message, data }) => {
 				})
 			break
 		case "download":
-			new DownloadAction(bot, chatId, messageId, action, `*${action.show}*\n_Episode ${action.episode}_\n\n`)
+			new DownloadAction(
+				bot,
+				chatId,
+				messageId,
+				action,
+				`*${action.show}*\n_Episode ${action.episode}_\n\nSend \`stop\` to stop session\n`,
+			)
 				.setup("Fetching download url...")
 				.then(download => download.start())
 				.catch(e => {

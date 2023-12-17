@@ -51,6 +51,23 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		this.frame = frame
 	}
 
+	private async checkForCleanup(photoId?: number) {
+		if ((await getSession(this.chatId)) === null) {
+			try {
+				await Promise.allSettled([
+					photoId ? this.bot.deleteMessage(this.chatId, photoId) : Promise.resolve(),
+					this.driver?.quit(),
+					this.bot.deleteMessage(this.chatId, this.responseId),
+					unlink(resolve("videos", this.action.show, (this.action.episode + "").padStart(2, "0") + ".mp4")),
+				])
+			} catch {
+				/**/
+			}
+			return true
+		}
+		return false
+	}
+
 	override async start() {
 		await setSession(this.chatId, { recaptcha: null })
 
@@ -64,6 +81,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		const html = await axios.get(`https://draplay2.pro/videos/${slug}`).then(r => r.data)
 		const fullscreenUrl = ("http:" + load(html)("iframe").attr("src")).replace("play.php", "download")
 
+		if (await this.checkForCleanup()) return
 		await this.log("Starting browser...")
 		const driver = await new Builder()
 			.forBrowser("chrome")
@@ -81,12 +99,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		let image = Buffer.from([])
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
-			if ((await getSession(this.chatId)) === null) {
-				await driver.quit()
-				await this.cleanup()
-				return
-			}
-
+			if (await this.checkForCleanup()) return
 			await driver.get(fullscreenUrl)
 			await this.log("Checking for download links...")
 
@@ -108,6 +121,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 				return
 			}
 
+			if (await this.checkForCleanup()) return
 			await this.log("No download links found, waiting for recaptcha...")
 			await this.switchFrame("check")
 
@@ -115,6 +129,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			await driver.executeScript("document.querySelector('.recaptcha-checkbox-border').click()")
 			await this.closeOtherTabs()
 
+			if (await this.checkForCleanup()) return
 			await this.switchFrame("popup")
 			const message = await driver.findElement(By.css(".rc-imageselect-instructions")).getText()
 			if (message.includes("none left") || message.includes("skip")) {
@@ -135,6 +150,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			}
 		}
 
+		if (await this.checkForCleanup()) return
 		await this.log("Waiting for recaptcha completion...")
 		await this.switchFrame("popup")
 		const size = (await driver.findElements(By.css("table tbody tr"))).length
@@ -152,7 +168,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			),
 		])
 
-		setSession(this.chatId, { recaptcha: this.responseId })
+		await setSession(this.chatId, { recaptcha: this.responseId })
 		await setCache(this.chatId, this.responseId, [
 			{
 				type: "recaptcha",
@@ -163,11 +179,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 
 		while (Date.now() - (await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!.date < 120_000) {
 			if ((await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!.squares) break
-			if ((await getSession(this.chatId)) === null) {
-				await driver.quit()
-				await this.cleanup()
-				return
-			}
+			if (await this.checkForCleanup(photoId)) return
 
 			await driver.sleep(2000)
 		}
@@ -182,6 +194,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			return
 		}
 
+		if (await this.checkForCleanup()) return
 		await this.log("Clicking squares: " + squares.map(s => s + 1).join(", "))
 		await driver.executeScript("document.querySelector('.rc-imageselect-challenge').click()")
 		await this.closeOtherTabs()
@@ -201,6 +214,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		await this.switchFrame("main")
 		await driver.executeScript("document.querySelector('#btn-submit').click()")
 
+		if (await this.checkForCleanup()) return
 		let found = false
 		try {
 			await driver.wait(until.elementLocated(By.css(".mirror_link")), 5000)
@@ -256,10 +270,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 				responseType: "stream",
 				onDownloadProgress: async progress => {
 					if (Date.now() - this.lastUpdate < 1000) return
-					if ((await getSession(this.chatId)) === null) {
-						await this.cleanup()
-						throw new Error()
-					}
+					if (await this.checkForCleanup()) throw new Error()
 
 					this.lastUpdate = Date.now()
 					this.log(this.formatProgress(progress, quality))
@@ -277,25 +288,23 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			.on("finish", async () => {
 				await setSession(this.chatId, null)
 
-				this.log(
-					`Quality: ${quality.toLowerCase()}\n` +
+				this.bot.editMessageText(
+					[
+						`*${this.action.show}*`,
+						`_Episode: ${this.action.episode}_`,
+						`Quality: ${quality.toLowerCase()}`,
 						[
 							"https://dramaload.zectan.com",
 							encodeURIComponent(this.action.show),
 							(this.action.episode + "").padStart(2, "0") + ".mp4",
 						].join("/"),
+					].join("\n"),
+					{
+						chat_id: this.chatId,
+						message_id: this.responseId,
+						parse_mode: "Markdown",
+					},
 				)
 			})
-	}
-
-	private async cleanup() {
-		try {
-			await Promise.all([
-				this.bot.deleteMessage(this.chatId, this.responseId),
-				unlink(resolve("videos", this.action.show, (this.action.episode + "").padStart(2, "0") + ".mp4")),
-			])
-		} catch {
-			/**/
-		}
 	}
 }
