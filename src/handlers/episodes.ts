@@ -26,7 +26,7 @@ export default class EpisodesHandler extends Handler<EpisodesCache["actions"][nu
 			),
 		]
 
-		await caches.findOne({ chatId: this.chatId, messageId: this.messageId, type: "download", actions: episodes })
+		await caches.insertOne({ chatId: this.chatId, messageId: this.messageId, type: "download", actions: episodes })
 		await this.bot.deleteMessage(this.chatId, this.responseId)
 		await this.bot.sendPhoto(
 			this.chatId,
