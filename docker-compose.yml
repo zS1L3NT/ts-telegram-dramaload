@@ -7,7 +7,7 @@ services:
         ports:
             - 9844:9844
         volumes:
-            - .:/app
+            - ./videos:/app/videos
         environment:
             TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
             MONGODB_URI: mongodb://mongodb:27017
