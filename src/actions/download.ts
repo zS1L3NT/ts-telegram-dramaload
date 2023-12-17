@@ -1,14 +1,13 @@
 import axios, { AxiosProgressEvent } from "axios"
 import { load } from "cheerio"
 import { createWriteStream } from "fs"
-import { exists, mkdir } from "fs/promises"
+import { exists, mkdir, unlink } from "fs/promises"
 import { resolve } from "path"
 import { Builder, By, until, WebDriver } from "selenium-webdriver"
 import { Options } from "selenium-webdriver/chrome"
 import { Stream } from "stream"
 
-import { IDownloadAction, IRecaptchaAction } from "../app"
-import { getCache, setCache, setRCLock } from "../cache"
+import { getCache, getSession, IDownloadAction, IRecaptchaAction, setCache, setSession } from "../db"
 import Action from "./action"
 
 export default class DownloadAction extends Action<IDownloadAction> {
@@ -53,6 +52,8 @@ export default class DownloadAction extends Action<IDownloadAction> {
 	}
 
 	override async start() {
+		await setSession(this.chatId, { recaptcha: null })
+
 		const slug =
 			this.action.show
 				.replaceAll(/[^a-zA-Z0-9\s]/g, "")
@@ -80,6 +81,12 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		let image = Buffer.from([])
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
+			if ((await getSession(this.chatId)) === null) {
+				await driver.quit()
+				await this.cleanup()
+				return
+			}
+
 			await driver.get(fullscreenUrl)
 			await this.log("Checking for download links...")
 
@@ -145,27 +152,33 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			),
 		])
 
-		setRCLock(this.messageId)
-		await setCache(this.messageId, [
+		setSession(this.chatId, { recaptcha: this.responseId })
+		await setCache(this.chatId, this.responseId, [
 			{
-				type: "Recaptcha",
+				type: "recaptcha",
 				squares: null,
 				date: Date.now(),
 			},
 		])
 
-		while (Date.now() - (await getCache<IRecaptchaAction>(this.messageId))![0]!.date < 120_000) {
-			if ((await getCache<IRecaptchaAction>(this.messageId))![0]!.squares) break
-			await driver.sleep(3000)
+		while (Date.now() - (await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!.date < 120_000) {
+			if ((await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!.squares) break
+			if ((await getSession(this.chatId)) === null) {
+				await driver.quit()
+				await this.cleanup()
+				return
+			}
+
+			await driver.sleep(2000)
 		}
 
 		await this.bot.deleteMessage(this.chatId, photoId)
 
-		const { squares } = (await getCache<IRecaptchaAction>(this.messageId))![0]!
+		const { squares } = (await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!
 		if (!squares) {
 			await this.log("Recaptcha timed out")
 			await driver.quit()
-			setRCLock(null)
+			await setSession(this.chatId, null)
 			return
 		}
 
@@ -199,6 +212,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		if (!found) {
 			await this.log("Recaptcha failed")
 			await driver.quit()
+			await setSession(this.chatId, null)
 			return
 		}
 
@@ -240,22 +254,29 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		const stream = await axios
 			.get<Stream>(video, {
 				responseType: "stream",
-				onDownloadProgress: progress => {
+				onDownloadProgress: async progress => {
 					if (Date.now() - this.lastUpdate < 1000) return
+					if ((await getSession(this.chatId)) === null) {
+						await this.cleanup()
+						throw new Error()
+					}
 
 					this.lastUpdate = Date.now()
 					this.log(this.formatProgress(progress, quality))
 				},
 			})
 			.then(res => res.data)
+			.catch(() => null)
 
 		stream
-			.pipe(
+			?.pipe(
 				createWriteStream(
 					resolve("videos", this.action.show, (this.action.episode + "").padStart(2, "0") + ".mp4"),
 				),
 			)
-			.on("finish", () => {
+			.on("finish", async () => {
+				await setSession(this.chatId, null)
+
 				this.log(
 					`Quality: ${quality.toLowerCase()}\n` +
 						[
@@ -265,5 +286,16 @@ export default class DownloadAction extends Action<IDownloadAction> {
 						].join("/"),
 				)
 			})
+	}
+
+	private async cleanup() {
+		try {
+			await Promise.all([
+				this.bot.deleteMessage(this.chatId, this.responseId),
+				unlink(resolve("videos", this.action.show, (this.action.episode + "").padStart(2, "0") + ".mp4")),
+			])
+		} catch {
+			/**/
+		}
 	}
 }

@@ -2,8 +2,8 @@ import axios from "axios"
 import { load } from "cheerio"
 import { InlineKeyboardButton } from "node-telegram-bot-api"
 
-import { IAction, IEpisodesAction } from "../app"
-import { setCache } from "../cache"
+import { IDownloadAction, IEpisodesAction } from "../db"
+import { setCache } from "../db"
 import Action from "./action"
 
 export default class EpisodesAction extends Action<IEpisodesAction> {
@@ -22,17 +22,17 @@ export default class EpisodesAction extends Action<IEpisodesAction> {
 					.map(
 						name =>
 							({
-								type: "Download",
+								type: "download",
 								show: name.split(" ").slice(0, -2).join(" "),
 								episode: +name.split(" ").at(-1)!,
-							}) satisfies IAction,
+							}) satisfies IDownloadAction,
 					)
 					.sort((a, b) => a.episode - b.episode),
 			),
 		]
 
-		await setCache(this.cacheKey, episodes)
-		await this.bot.deleteMessage(this.chatId, +this.messageId)
+		await setCache(this.chatId, this.messageId, episodes)
+		await this.bot.deleteMessage(this.chatId, this.responseId)
 		await this.bot.sendPhoto(
 			this.chatId,
 			this.action.image,
@@ -42,7 +42,7 @@ export default class EpisodesAction extends Action<IEpisodesAction> {
 					inline_keyboard: episodes.map((s, i) => [
 						{
 							text: `Episode ${s.episode}`,
-							callback_data: `${this.cacheKey},${i}`,
+							callback_data: `${this.messageId},${i}`,
 						} satisfies InlineKeyboardButton,
 					]),
 				},
