@@ -16,6 +16,11 @@ axios.defaults.headers.common["Accept-Encoding"] = "gzip"
 const bot = new TelegramBot(Bun.env.TELEGRAM_API_KEY, { polling: true })
 
 bot.onText(/^.*$/, async message => {
+	if (message.chat.username !== "zS1L3NT") {
+		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+		return
+	}
+
 	const lock = getRCLock()
 	if (!lock) return
 
@@ -36,18 +41,26 @@ bot.onText(/^.*$/, async message => {
 })
 
 bot.onText(/^\/start$/, message => {
+	if (message.chat.username !== "zS1L3NT") {
+		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+		return
+	}
+
 	bot.sendMessage(
 		message.chat.id,
-		[
-			"Welcome to Dramaload!",
-			"Search for a kdrama name with the following command:",
-			"`/search <KDrama>`",
-		].join("\n\n"),
+		["Welcome to Dramaload!", "Search for a kdrama name with the following command:", "`/search <KDrama>`"].join(
+			"\n\n",
+		),
 		{ parse_mode: "Markdown" },
 	)
 })
 
 bot.onText(/^\/search (.*)$/, async message => {
+	if (message.chat.username !== "zS1L3NT") {
+		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+		return
+	}
+
 	const { text, message_id, chat } = message
 	const search = text!.slice(8)
 
@@ -62,6 +75,10 @@ bot.onText(/^\/search (.*)$/, async message => {
 
 bot.on("callback_query", async ({ message, data }) => {
 	if (!message || !data) return
+	if (message.chat.username !== "zS1L3NT") {
+		bot.sendMessage(message.chat.id, "I only answer to zS1L3NT.")
+		return
+	}
 
 	const [id, i] = data.split(",")
 	const action = (await getCache(+id!))?.[+i!]
@@ -80,13 +97,7 @@ bot.on("callback_query", async ({ message, data }) => {
 				})
 			break
 		case "Download":
-			new DownloadAction(
-				bot,
-				chatId,
-				messageId,
-				action,
-				`*${action.show}*\n_Episode ${action.episode}_\n\n`,
-			)
+			new DownloadAction(bot, chatId, messageId, action, `*${action.show}*\n_Episode ${action.episode}_\n\n`)
 				.setup("Fetching download url...")
 				.then(download => download.start())
 				.catch(e => {
