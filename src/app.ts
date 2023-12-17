@@ -77,7 +77,11 @@ bot.on("callback_query", async ({ message, data }) => {
 
 	const [id, i] = data.split(",").map(v => +v) as [number, number]
 	const action = (await getCache(message.chat.id, id))?.[i]
-	if (!action) return
+	if (!action) {
+		bot.deleteMessage(message.chat.id, message.message_id)
+		bot.sendMessage(message.chat.id, "Cannot fetch actions for that message, re-run the command.")
+		return
+	}
 
 	const chatId = message.chat.id
 	const messageId = message.message_id
