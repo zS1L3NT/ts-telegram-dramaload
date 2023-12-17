@@ -7,10 +7,10 @@ import { Builder, By, until, WebDriver } from "selenium-webdriver"
 import { Options } from "selenium-webdriver/chrome"
 import { Stream } from "stream"
 
-import { getCache, getSession, IDownloadAction, IRecaptchaAction, setCache, setSession } from "../db"
-import Action from "./action"
+import { caches, DownloadCache, RecaptchaCache, sessions } from "../db"
+import Handler from "./handler"
 
-export default class DownloadAction extends Action<IDownloadAction> {
+export default class DownloadHandler extends Handler<DownloadCache["actions"][number]> {
 	private lastUpdate = Date.now()
 	private frame: "main" | "check" | "popup" = "main"
 	private driver!: WebDriver
@@ -52,32 +52,40 @@ export default class DownloadAction extends Action<IDownloadAction> {
 	}
 
 	private async checkForCleanup(photoId?: number) {
-		if ((await getSession(this.chatId)) === null) {
-			try {
-				await Promise.allSettled([
-					photoId ? this.bot.deleteMessage(this.chatId, photoId) : Promise.resolve(),
-					this.driver?.quit(),
-					this.bot.deleteMessage(this.chatId, this.responseId),
-					unlink(resolve("videos", this.action.show, (this.action.episode + "").padStart(2, "0") + ".mp4")),
-				])
-			} catch {
-				/**/
-			}
-			return true
+		if (await sessions.findOne({ chatId: this.chatId, messageId: this.responseId })) {
+			return false
 		}
-		return false
+
+		try {
+			await Promise.allSettled([
+				this.driver?.quit(),
+				this.bot.deleteMessage(this.chatId, this.responseId),
+				unlink(resolve("videos", this.data.show, (this.data.episode + "").padStart(2, "0") + ".mp4")),
+			])
+
+			if (photoId) {
+				await Promise.allSettled([
+					this.bot.deleteMessage(this.chatId, photoId),
+					caches.deleteOne({ chatId: this.chatId, messageId: photoId }),
+				])
+			}
+		} catch {
+			/**/
+		}
+
+		return true
 	}
 
 	override async start() {
-		await setSession(this.chatId, { recaptcha: null })
+		await sessions.insertOne({ chatId: this.chatId, messageId: this.responseId })
 
 		const slug =
-			this.action.show
+			this.data.show
 				.replaceAll(/[^a-zA-Z0-9\s]/g, "")
 				.replaceAll(" ", "-")
 				.toLowerCase() +
 			"-episode-" +
-			this.action.episode
+			this.data.episode
 		const html = await axios.get(`https://draplay2.pro/videos/${slug}`).then(r => r.data)
 		const fullscreenUrl = ("http:" + load(html)("iframe").attr("src")).replace("play.php", "download")
 
@@ -86,22 +94,22 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		const driver = await new Builder()
 			.forBrowser("chrome")
 			.setChromeOptions(
-				new Options()
-					.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--start-maximised")
-					.windowSize({
-						width: 1920,
-						height: 1080,
-					}),
+				new Options().addArguments("--no-sandbox", "--disable-dev-shm-usage", "--start-maximised").windowSize({
+					width: 1920,
+					height: 1080,
+				}),
 			)
 			.build()
 		this.driver = driver
 
+		let attempts = 0
 		let image = Buffer.from([])
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
+			attempts++
 			if (await this.checkForCleanup()) return
 			await driver.get(fullscreenUrl)
-			await this.log("Checking for download links...")
+			await this.log(`(${attempts}) Checking for download links...`)
 
 			let found = false
 			try {
@@ -122,7 +130,7 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			}
 
 			if (await this.checkForCleanup()) return
-			await this.log("No download links found, waiting for recaptcha...")
+			await this.log(`(${attempts}) No download links found, waiting for recaptcha...`)
 			await this.switchFrame("check")
 
 			await driver.wait(until.elementLocated(By.css(".recaptcha-checkbox-border")), 30_000)
@@ -133,9 +141,9 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			await this.switchFrame("popup")
 			const message = await driver.findElement(By.css(".rc-imageselect-instructions")).getText()
 			if (message.includes("none left") || message.includes("skip")) {
-				await this.log("Multi-step recaptcha detected, refreshing...")
+				await this.log(`(${attempts}) Multi-step recaptcha detected, refreshing...`)
 			} else if (!message) {
-				await this.log("No recaptcha message detected, refreshing...")
+				await this.log(`(${attempts}) No recaptcha message detected, refreshing...`)
 			} else {
 				await driver.sleep(500)
 				await this.switchFrame("main")
@@ -151,55 +159,81 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		}
 
 		if (await this.checkForCleanup()) return
-		await this.log("Waiting for recaptcha completion...")
 		await this.switchFrame("popup")
 		const size = (await driver.findElements(By.css("table tbody tr"))).length
 
 		const [photoId] = await Promise.all([
 			this.bot
-				.sendPhoto(this.chatId, image, {}, { filename: this.action.show + ".jpg", contentType: "image/jpeg" })
+				.sendPhoto(
+					this.chatId,
+					image,
+					{
+						reply_markup: {
+							inline_keyboard: [
+								...Array(size)
+									.fill(0)
+									.map((_, i) =>
+										Array(size)
+											.fill(0)
+											.map((_, j) => i * size + j + 1 + "")
+											.map(v => ({
+												text: v,
+												callback_data: `${this.chatId},0,${v}`,
+											})),
+									),
+								[
+									{
+										text: "Done",
+										callback_data: `${this.chatId},0,0`,
+									},
+								],
+							],
+						},
+					},
+					{ filename: this.data.show + ".jpg", contentType: "image/jpeg" },
+				)
 				.then(m => m.message_id),
-			this.log(
-				[
-					"Please type the square numbers that match the criteria in comma seperated form",
-					`Numbers must be between 1 ~ ${Math.pow(size, 2)} since the image is ${size}x${size}. Example:`,
-					"`1,3,4,9`\n`8,11,15,16`",
-				].join("\n\n"),
-			),
+			this.log(["Please type the square numbers that match the criteria"].join("\n\n")),
 		])
 
-		await setSession(this.chatId, { recaptcha: this.responseId })
-		await setCache(this.chatId, this.responseId, [
-			{
-				type: "recaptcha",
-				squares: null,
-				date: Date.now(),
-			},
-		])
+		await caches.insertOne({
+			type: "recaptcha",
+			chatId: this.chatId,
+			messageId: photoId,
+			squares: [],
+			submitted: false,
+			date: Date.now(),
+		})
 
-		while (Date.now() - (await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!.date < 120_000) {
-			if ((await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!.squares) break
+		let cache: RecaptchaCache | null
+		while (
+			Date.now() -
+				(cache = await caches.findOne<RecaptchaCache>({ chatId: this.chatId, messageId: photoId }))!.date <
+			120_000
+		) {
+			if (cache!.submitted) break
 			if (await this.checkForCleanup(photoId)) return
 
-			await driver.sleep(2000)
+			await driver.sleep(1000)
 		}
 
+		await caches.deleteOne({ chatId: this.chatId, messageId: photoId })
 		await this.bot.deleteMessage(this.chatId, photoId)
 
-		const { squares } = (await getCache<IRecaptchaAction>(this.chatId, this.responseId))![0]!
+		const { squares } = cache!
 		if (!squares) {
-			await this.log("Recaptcha timed out")
+			await this.log("Recaptcha timed out", true)
 			await driver.quit()
-			await setSession(this.chatId, null)
+			await sessions.deleteOne({ chatId: this.chatId, messageId: this.responseId })
 			return
 		}
 
 		if (await this.checkForCleanup()) return
-		await this.log("Clicking squares: " + squares.map(s => s + 1).join(", "))
+		await this.log("Clicking squares: " + squares.join(", "))
 		await driver.executeScript("document.querySelector('.rc-imageselect-challenge').click()")
 		await this.closeOtherTabs()
 
-		for (const number of squares) {
+		for (const number of squares.map(v => v - 1)) {
 			await driver.sleep(250)
 			const x = (number % size) + 1
 			const y = ((number / size) | 0) + 1
@@ -224,9 +258,9 @@ export default class DownloadAction extends Action<IDownloadAction> {
 		}
 
 		if (!found) {
-			await this.log("Recaptcha failed")
+			await this.log("Recaptcha failed", true)
 			await driver.quit()
-			await setSession(this.chatId, null)
+			await sessions.deleteOne({ chatId: this.chatId, messageId: this.responseId })
 			return
 		}
 
@@ -261,8 +295,8 @@ export default class DownloadAction extends Action<IDownloadAction> {
 	private async respond(video: string, quality: string) {
 		await this.log("Downloading video...")
 
-		if (!(await exists(resolve("videos", this.action.show)))) {
-			await mkdir(resolve("videos", this.action.show), { recursive: true })
+		if (!(await exists(resolve("videos", this.data.show)))) {
+			await mkdir(resolve("videos", this.data.show), { recursive: true })
 		}
 
 		const stream = await axios
@@ -270,7 +304,10 @@ export default class DownloadAction extends Action<IDownloadAction> {
 				responseType: "stream",
 				onDownloadProgress: async progress => {
 					if (Date.now() - this.lastUpdate < 1000) return
-					if (await this.checkForCleanup()) throw new Error()
+					if (await this.checkForCleanup()) {
+						piped?.close()
+						return
+					}
 
 					this.lastUpdate = Date.now()
 					this.log(this.formatProgress(progress, quality))
@@ -279,32 +316,22 @@ export default class DownloadAction extends Action<IDownloadAction> {
 			.then(res => res.data)
 			.catch(() => null)
 
-		stream
-			?.pipe(
-				createWriteStream(
-					resolve("videos", this.action.show, (this.action.episode + "").padStart(2, "0") + ".mp4"),
-				),
-			)
-			.on("finish", async () => {
-				await setSession(this.chatId, null)
+		const piped = stream?.pipe(
+			createWriteStream(resolve("videos", this.data.show, (this.data.episode + "").padStart(2, "0") + ".mp4")),
+		)
 
-				this.bot.editMessageText(
+		piped?.on("finish", async () => {
+			await sessions.deleteOne({ chatId: this.chatId, messageId: this.responseId })
+
+			this.log(
+				`Quality: ${quality.toLowerCase()}\n` +
 					[
-						`*${this.action.show}*`,
-						`_Episode: ${this.action.episode}_`,
-						`Quality: ${quality.toLowerCase()}`,
-						[
-							"https://dramaload.zectan.com",
-							encodeURIComponent(this.action.show),
-							(this.action.episode + "").padStart(2, "0") + ".mp4",
-						].join("/"),
-					].join("\n"),
-					{
-						chat_id: this.chatId,
-						message_id: this.responseId,
-						parse_mode: "Markdown",
-					},
-				)
-			})
+						"https://dramaload.zectan.com",
+						encodeURIComponent(this.data.show),
+						(this.data.episode + "").padStart(2, "0") + ".mp4",
+					].join("/"),
+				true,
+			).catch(() => {})
+		})
 	}
 }
