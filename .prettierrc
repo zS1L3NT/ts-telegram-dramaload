@@ -3,7 +3,7 @@
 	"arrowParens": "avoid",
 	"trailingComma": "all",
 	"jsxSingleQuote": false,
-	"printWidth": 100,
+	"printWidth": 120,
 	"singleAttributePerLine": true,
 	"bracketSameLine": true,
 	"useTabs": true,

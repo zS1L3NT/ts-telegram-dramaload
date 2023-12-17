@@ -47,11 +47,17 @@ bot.onText(/^\/start$/, message => {
 	)
 })
 
-bot.onText(/^\/search (.*)$/, async ({ text, message_id, chat }) => {
+bot.onText(/^\/search (.*)$/, async message => {
+	const { text, message_id, chat } = message
 	const search = text!.slice(8)
-	await new SearchAction(bot, chat.id, message_id, search, "")
+
+	new SearchAction(bot, chat.id, message_id, search, "")
 		.setup(`Searching for "${search}"...`)
 		.then(search => search.start())
+		.catch(e => {
+			console.log("Error in search action:", { error: e })
+			bot.sendMessage(chat.id, "Error occured, please check logs.")
+		})
 })
 
 bot.on("callback_query", async ({ message, data }) => {
@@ -65,12 +71,16 @@ bot.on("callback_query", async ({ message, data }) => {
 	const messageId = message.message_id
 	switch (action.type) {
 		case "Episodes":
-			await new EpisodesAction(bot, chatId, messageId, action, `*${action.show}*\n\n`)
-				.setup(`Fetching episodes...`)
+			new EpisodesAction(bot, chatId, messageId, action, `*${action.show}*\n\n`)
+				.setup("Fetching episodes...")
 				.then(episodes => episodes.start())
+				.catch(e => {
+					console.log("Error in download action:", { error: e, action, message, data })
+					bot.sendMessage(chatId, "Error occured, please check logs.")
+				})
 			break
 		case "Download":
-			await new DownloadAction(
+			new DownloadAction(
 				bot,
 				chatId,
 				messageId,
@@ -79,10 +89,14 @@ bot.on("callback_query", async ({ message, data }) => {
 			)
 				.setup("Fetching download url...")
 				.then(download => download.start())
+				.catch(e => {
+					console.log("Error in download action:", e)
+					bot.sendMessage(chatId, "Error occured, please check logs.")
+				})
 	}
 })
 
-const PORT = 3000
+const PORT = 9844
 const app = express()
 
 app.use(express.static("videos"))
