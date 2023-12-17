@@ -21,7 +21,7 @@ axios.defaults.headers.common["Accept-Encoding"] = "gzip"
 const bot = new TelegramBot(Bun.env.TELEGRAM_API_KEY, { polling: true })
 
 bot.onText(/^[^/]/, async message => {
-	if (await isAuthenticated(message.from?.username)) {
+	if (!(await isAuthenticated(message.from?.username))) {
 		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
@@ -53,7 +53,7 @@ bot.onText(/^[^/]/, async message => {
 })
 
 bot.onText(/^\/start/, async message => {
-	if (await isAuthenticated(message.from?.username)) {
+	if (!(await isAuthenticated(message.from?.username))) {
 		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
@@ -76,7 +76,7 @@ bot.onText(/^\/start/, async message => {
 })
 
 bot.onText(/^\/search/, async message => {
-	if (await isAuthenticated(message.from?.username)) {
+	if (!(await isAuthenticated(message.from?.username))) {
 		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
@@ -135,7 +135,7 @@ bot.onText(/^\/auth/, async message => {
 
 bot.on("callback_query", async ({ from, message, data }) => {
 	if (!message || !data) return
-	if (await isAuthenticated(from.username)) {
+	if (!(await isAuthenticated(from.username))) {
 		bot.sendMessage(message.chat.id, "You aren't authorized to use this bot.")
 		return
 	}
