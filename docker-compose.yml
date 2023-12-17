@@ -1,0 +1,11 @@
+version: 3.8.0
+services:
+    dramaload:
+        working_dir: /app
+        build: .
+        container_name: dramaload
+        ports:
+            - 9844:9844
+        volumes:
+            - .:/app
+        env_file: ./.env
