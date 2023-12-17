@@ -2,6 +2,7 @@ import axios, { AxiosProgressEvent } from "axios"
 import { load } from "cheerio"
 import { createWriteStream } from "fs"
 import { exists, mkdir, unlink } from "fs/promises"
+import { InlineKeyboardMarkup } from "node-telegram-bot-api"
 import { resolve } from "path"
 import { Builder, By, until, WebDriver } from "selenium-webdriver"
 import { Options } from "selenium-webdriver/chrome"
@@ -94,10 +95,12 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 		const driver = await new Builder()
 			.forBrowser("chrome")
 			.setChromeOptions(
-				new Options().addArguments("--no-sandbox", "--disable-dev-shm-usage", "--start-maximised").windowSize({
-					width: 1920,
-					height: 1080,
-				}),
+				new Options()
+					.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--start-maximised")
+					.windowSize({
+						width: 1920,
+						height: 1080,
+					}),
 			)
 			.build()
 		this.driver = driver
@@ -162,34 +165,34 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 		await this.switchFrame("popup")
 		const size = (await driver.findElements(By.css("table tbody tr"))).length
 
+		const markup: InlineKeyboardMarkup = {
+			inline_keyboard: [
+				...Array(size)
+					.fill(0)
+					.map((_, i) =>
+						Array(size)
+							.fill(0)
+							.map((_, j) => i * size + j + 1 + "")
+							.map(v => ({
+								text: v,
+								callback_data: `${this.chatId},0,${v}`,
+							})),
+					),
+				[
+					{
+						text: "Done",
+						callback_data: `${this.chatId},0,0`,
+					},
+				],
+			],
+		}
+
 		const [photoId] = await Promise.all([
 			this.bot
 				.sendPhoto(
 					this.chatId,
 					image,
-					{
-						reply_markup: {
-							inline_keyboard: [
-								...Array(size)
-									.fill(0)
-									.map((_, i) =>
-										Array(size)
-											.fill(0)
-											.map((_, j) => i * size + j + 1 + "")
-											.map(v => ({
-												text: v,
-												callback_data: `${this.chatId},0,${v}`,
-											})),
-									),
-								[
-									{
-										text: "Done",
-										callback_data: `${this.chatId},0,0`,
-									},
-								],
-							],
-						},
-					},
+					{ reply_markup: markup },
 					{ filename: this.data.show + ".jpg", contentType: "image/jpeg" },
 				)
 				.then(m => m.message_id),
@@ -205,6 +208,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			date: Date.now(),
 		})
 
+		let current: number[] = []
 		let cache: RecaptchaCache | null
 		while (
 			Date.now() -
@@ -214,7 +218,15 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			if (cache!.submitted) break
 			if (await this.checkForCleanup(photoId)) return
 
-			await driver.sleep(1000)
+			if (current.join(",") !== cache?.squares.join(",")) {
+				current = cache!.squares
+				await this.bot.editMessageCaption(`Squares: ${current.join(", ")}`, {
+					chat_id: this.chatId,
+					message_id: photoId,
+					reply_markup: markup,
+				})
+			}
+			await driver.sleep(500)
 		}
 
 		await caches.deleteOne({ chatId: this.chatId, messageId: photoId })
