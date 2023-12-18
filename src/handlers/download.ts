@@ -192,7 +192,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 				.sendPhoto(
 					this.chatId,
 					image,
-					{ reply_markup: markup },
+					{ caption: "Squares: ", reply_markup: markup },
 					{ filename: this.data.show + ".jpg", contentType: "image/jpeg" },
 				)
 				.then(m => m.message_id),
