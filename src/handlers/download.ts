@@ -315,7 +315,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			.get<Stream>(video, {
 				responseType: "stream",
 				onDownloadProgress: async progress => {
-					if (Date.now() - this.lastUpdate < 1000) return
+					if (Date.now() - this.lastUpdate < 5000) return
 					if (await this.checkForCleanup()) {
 						piped?.close()
 						return
