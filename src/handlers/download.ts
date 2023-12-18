@@ -13,8 +13,9 @@ import Handler from "./handler"
 
 export default class DownloadHandler extends Handler<DownloadCache["actions"][number]> {
 	private lastUpdate = Date.now()
-	private frame: "main" | "check" | "popup" = "main"
 	private driver!: WebDriver
+	private frame: "main" | "check" | "popup" = "main"
+	private photoId: number | null = null
 
 	private async closeOtherTabs() {
 		await this.driver.sleep(1000)
@@ -77,6 +78,53 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 		return true
 	}
 
+	private async updateRecaptcha() {
+		await this.switchFrame("main")
+		const image = await this.driver
+			.findElement(By.css('iframe[title="recaptcha challenge expires in two minutes"]'))
+			.takeScreenshot()
+			.then(i => Buffer.from(i, "base64"))
+		await this.switchFrame("popup")
+
+		const size = (await this.driver.findElements(By.css("table tbody tr"))).length
+		const markup: InlineKeyboardMarkup = {
+			inline_keyboard: [
+				...Array(size)
+					.fill(0)
+					.map((_, i) =>
+						Array(size)
+							.fill(0)
+							.map((_, j) => i * size + j + 1 + "")
+							.map(v => ({
+								text: v,
+								callback_data: `${this.chatId},0,${v}`,
+							})),
+					),
+				[
+					{
+						text: await this.driver.findElement(By.css(".verify-button-holder button")).getText(),
+						callback_data: `${this.chatId},0,0`,
+					},
+				],
+			],
+		}
+
+		if (this.photoId) {
+			const path = resolve((Math.random() + "").slice(2) + ".jpg")
+			await Bun.write(path, image)
+			await this.bot.editMessageMedia(
+				{ type: "photo", media: "attach://" + path },
+				{ chat_id: this.chatId, message_id: this.photoId, reply_markup: markup },
+			)
+			setTimeout(() => unlink(path), 1000)
+		} else {
+			this.photoId = await Promise.all([
+				this.bot.sendPhoto(this.chatId, image, { reply_markup: markup }).then(m => m.message_id),
+				this.log(["Please type the square numbers that match the criteria"].join("\n\n")),
+			]).then(([photoId]) => photoId)
+		}
+	}
+
 	override async start() {
 		await sessions.insertOne({ chatId: this.chatId, messageId: this.responseId })
 
@@ -105,163 +153,109 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			.build()
 		this.driver = driver
 
-		let attempts = 0
-		let image = Buffer.from([])
-		// eslint-disable-next-line no-constant-condition
-		while (true) {
-			attempts++
-			if (await this.checkForCleanup()) return
-			await driver.get(fullscreenUrl)
-			await this.log(`(${attempts}) Checking for download links...`)
+		if (await this.checkForCleanup()) return
+		await driver.get(fullscreenUrl)
+		await this.log("Checking for download links...")
 
-			let found = false
-			try {
-				await driver.wait(until.elementLocated(By.css(".mirror_link")), 5000)
-				found = true
-			} catch {
-				/**/
-			}
+		let found = false
+		try {
+			await driver.wait(until.elementLocated(By.css(".mirror_link")), 5000)
+			found = true
+		} catch {
+			/**/
+		}
 
-			if (found) {
-				const a = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
-				const href = await a.getAttribute("href")
-				const quality = await a.getText().then(t => t.match(/\d+P/)![0]!)
+		if (found) {
+			const a = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
+			const href = await a.getAttribute("href")
+			const quality = await a.getText().then(t => t.match(/\d+P/)![0]!)
 
-				await driver.quit()
-				await this.respond(href, quality)
-				return
-			}
-
-			if (await this.checkForCleanup()) return
-			await this.log(`(${attempts}) No download links found, waiting for recaptcha...`)
-			await this.switchFrame("check")
-
-			await driver.wait(until.elementLocated(By.css(".recaptcha-checkbox-border")), 30_000)
-			await driver.executeScript("document.querySelector('.recaptcha-checkbox-border').click()")
-			await this.closeOtherTabs()
-
-			if (await this.checkForCleanup()) return
-			await this.switchFrame("popup")
-			const message = await driver.findElement(By.css(".rc-imageselect-instructions")).getText()
-			if (message.includes("none left") || message.includes("skip")) {
-				await this.log(`(${attempts}) Multi-step recaptcha detected, refreshing...`)
-			} else if (!message) {
-				await this.log(`(${attempts}) No recaptcha message detected, refreshing...`)
-			} else {
-				await driver.sleep(500)
-				await this.switchFrame("main")
-				image = Buffer.from(
-					await driver
-						.findElement(By.css('iframe[title="recaptcha challenge expires in two minutes"]'))
-						.takeScreenshot(),
-					"base64",
-				)
-
-				break
-			}
+			await driver.quit()
+			await this.respond(href, quality)
+			return
 		}
 
 		if (await this.checkForCleanup()) return
+		await this.log(`No download links found, waiting for recaptcha...`)
+		await this.switchFrame("check")
+
+		await driver.wait(until.elementLocated(By.css(".recaptcha-checkbox-border")), 30_000)
+		await driver.executeScript("document.querySelector('.recaptcha-checkbox-border').click()")
+		await this.closeOtherTabs()
+		await driver.sleep(500)
+
+		if (await this.checkForCleanup()) return
 		await this.switchFrame("popup")
-		const size = (await driver.findElements(By.css("table tbody tr"))).length
 
-		const markup: InlineKeyboardMarkup = {
-			inline_keyboard: [
-				...Array(size)
-					.fill(0)
-					.map((_, i) =>
-						Array(size)
-							.fill(0)
-							.map((_, j) => i * size + j + 1 + "")
-							.map(v => ({
-								text: v,
-								callback_data: `${this.chatId},0,${v}`,
-							})),
-					),
-				[
-					{
-						text: "Done",
-						callback_data: `${this.chatId},0,0`,
-					},
-				],
-			],
-		}
+		await this.updateRecaptcha()
 
-		const [photoId] = await Promise.all([
-			this.bot
-				.sendPhoto(
-					this.chatId,
-					image,
-					{ caption: "Squares: ", reply_markup: markup },
-					{ filename: this.data.show + ".jpg", contentType: "image/jpeg" },
-				)
-				.then(m => m.message_id),
-			this.log(["Please type the square numbers that match the criteria"].join("\n\n")),
-		])
-
-		await caches.insertOne({
+		let cache: RecaptchaCache = {
 			type: "recaptcha",
 			chatId: this.chatId,
-			messageId: photoId,
-			squares: [],
-			submitted: false,
+			messageId: this.photoId!,
+			queued: [],
 			date: Date.now(),
-		})
-
-		let current: number[] = []
-		let cache: RecaptchaCache | null
-		while (
-			Date.now() -
-				(cache = await caches.findOne<RecaptchaCache>({ chatId: this.chatId, messageId: photoId }))!.date <
-			120_000
-		) {
-			if (cache!.submitted) break
-			if (await this.checkForCleanup(photoId)) return
-
-			if (current.join(",") !== cache?.squares.join(",")) {
-				current = cache!.squares
-				await this.bot.editMessageCaption(`Squares: ${current.join(", ")}`, {
-					chat_id: this.chatId,
-					message_id: photoId,
-					reply_markup: markup,
-				})
-			}
-			await driver.sleep(500)
 		}
 
-		await caches.deleteOne({ chatId: this.chatId, messageId: photoId })
-		await this.bot.deleteMessage(this.chatId, photoId)
+		await caches.insertOne(cache)
+		await driver.executeScript("document.querySelector('.rc-imageselect-challenge').click()")
+		await this.closeOtherTabs()
 
-		const { squares } = cache!
-		if (!squares) {
+		let finished = false
+		let clicked = 0
+		while (Date.now() - cache.date < 100000 || !finished) {
+			if (await this.checkForCleanup(this.photoId!)) return
+			if (
+				await driver
+					.findElement(By.id("recaptcha-reload-button"))
+					.then(async e => (await e.getAttribute("class")).includes("rc-button-disabled"))
+			) {
+				finished = true
+				break
+			}
+
+			if (clicked !== cache.queued.length) {
+				const size = (await driver.findElements(By.css("table tbody tr"))).length
+				for (const square of cache.queued.slice(clicked)) {
+					if (square === 0) {
+						await driver.executeScript("document.querySelector('#recaptcha-verify-button').click()")
+						await driver.sleep(500)
+					} else {
+						const index = square - 1
+						const x = (index % size) + 1
+						const y = ((index / size) | 0) + 1
+						await driver.executeScript(
+							`document.querySelector('table tr:nth-of-type(${y}) td:nth-of-type(${x})').click()`,
+						)
+						await driver.sleep(250)
+					}
+					clicked++
+				}
+
+				if (cache.queued.at(-1) !== 0) {
+					await this.updateRecaptcha()
+				}
+			}
+
+			await driver.sleep(500)
+			cache = (await caches.findOne<RecaptchaCache>({ chatId: this.chatId, messageId: this.photoId! }))!
+		}
+
+		await caches.deleteOne({ chatId: this.chatId, messageId: this.photoId! })
+		await this.bot.deleteMessage(this.chatId, this.photoId!)
+
+		if (!finished) {
 			await this.log("Recaptcha timed out", true)
 			await driver.quit()
 			await sessions.deleteOne({ chatId: this.chatId, messageId: this.responseId })
 			return
 		}
 
-		if (await this.checkForCleanup()) return
-		await this.log("Clicking squares: " + squares.join(", "))
-		await driver.executeScript("document.querySelector('.rc-imageselect-challenge').click()")
-		await this.closeOtherTabs()
-
-		for (const number of squares.map(v => v - 1)) {
-			await driver.sleep(250)
-			const x = (number % size) + 1
-			const y = ((number / size) | 0) + 1
-			await driver.executeScript(
-				`document.querySelector('table tr:nth-of-type(${y}) td:nth-of-type(${x})').click()`,
-			)
-		}
-
-		await driver.executeScript("document.querySelector('#recaptcha-verify-button').click()")
-		await driver.sleep(500)
-
 		await this.switchFrame("main")
 		await driver.executeScript("document.querySelector('#btn-submit').click()")
 
 		if (await this.checkForCleanup()) return
-		let found = false
+		found = false
 		try {
 			await driver.wait(until.elementLocated(By.css(".mirror_link")), 5000)
 			found = true

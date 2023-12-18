@@ -18,8 +18,7 @@ export type RecaptchaCache = {
 	type: "recaptcha"
 	chatId: number
 	messageId: number
-	squares: number[]
-	submitted: boolean
+	queued: number[]
 	date: number
 }
 

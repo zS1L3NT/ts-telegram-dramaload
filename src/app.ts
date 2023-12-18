@@ -123,16 +123,7 @@ bot.on("callback_query", async ({ from, message, data }) => {
 	}
 
 	if (cache.type === "recaptcha") {
-		if (index === 0) {
-			cache.submitted = true
-		} else if (cache.squares.includes(index)) {
-			cache.squares.splice(cache.squares.indexOf(index), 1)
-		} else {
-			cache.squares.push(index)
-			cache.squares.sort((a, b) => a - b)
-		}
-
-		await caches.updateOne({ chatId: cache.chatId, messageId: cache.messageId }, { $set: cache })
+		await caches.updateOne({ chatId: cache.chatId, messageId: cache.messageId }, { $push: { queued: index } })
 	} else {
 		const action = cache.actions[index]!
 		const messageId = message.message_id
