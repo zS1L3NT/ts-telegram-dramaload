@@ -219,7 +219,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 				for (const square of cache.queued.slice(clicked)) {
 					if (square === 0) {
 						await driver.executeScript("document.querySelector('#recaptcha-verify-button').click()")
-						await driver.sleep(500)
+						await driver.sleep(250)
 					} else {
 						const index = square - 1
 						const x = (index % size) + 1
@@ -237,7 +237,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 				}
 			}
 
-			await driver.sleep(500)
+			await driver.sleep(250)
 			cache = (await caches.findOne<RecaptchaCache>({ chatId: this.chatId, messageId: this.photoId! }))!
 		}
 
@@ -309,7 +309,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			.get<Stream>(video, {
 				responseType: "stream",
 				onDownloadProgress: async progress => {
-					if (Date.now() - this.lastUpdate < 5000) return
+					if (Date.now() - this.lastUpdate < 3000) return
 					if (await this.checkForCleanup()) {
 						piped?.close()
 						return
