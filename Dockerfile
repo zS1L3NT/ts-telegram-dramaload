@@ -11,5 +11,4 @@ RUN bun i
 
 ENV NTBA_FIX_350 1
 
-EXPOSE 9844
 CMD bun start

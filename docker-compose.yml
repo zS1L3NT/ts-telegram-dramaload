@@ -4,10 +4,6 @@ services:
         working_dir: /app
         build: .
         container_name: dramaload
-        ports:
-            - 9844:9844
-        volumes:
-            - ./videos:/app/videos
         environment:
             TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
             MONGODB_URI: mongodb://mongodb:27017

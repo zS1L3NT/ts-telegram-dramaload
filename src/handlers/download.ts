@@ -1,21 +1,19 @@
-import axios, { AxiosProgressEvent } from "axios"
+import axios from "axios"
 import { load } from "cheerio"
-import { createWriteStream } from "fs"
-import { exists, mkdir, unlink } from "fs/promises"
+import { unlink } from "fs/promises"
 import { InlineKeyboardMarkup } from "node-telegram-bot-api"
 import { resolve } from "path"
 import { Builder, By, until, WebDriver } from "selenium-webdriver"
 import { Options } from "selenium-webdriver/chrome"
-import { Stream } from "stream"
 
 import { caches, DownloadCache, RecaptchaCache, sessions } from "../db"
 import Handler from "./handler"
 
 export default class DownloadHandler extends Handler<DownloadCache["actions"][number]> {
-	private lastUpdate = Date.now()
 	private driver!: WebDriver
 	private frame: "main" | "check" | "popup" = "main"
 	private photoId: number | null = null
+	private buffer = Buffer.from([])
 
 	private async closeOtherTabs() {
 		await this.driver.sleep(1000)
@@ -80,7 +78,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 
 	private async updateRecaptcha() {
 		await this.switchFrame("main")
-		const image = await this.driver
+		const buffer = await this.driver
 			.findElement(By.css('iframe[title="recaptcha challenge expires in two minutes"]'))
 			.takeScreenshot()
 			.then(i => Buffer.from(i, "base64"))
@@ -109,19 +107,21 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			],
 		}
 
-		if (this.photoId) {
+		if (!this.photoId) {
+			this.buffer = buffer
+			this.photoId = await Promise.all([
+				this.bot.sendPhoto(this.chatId, buffer, { reply_markup: markup }).then(m => m.message_id),
+				this.log(["Please type the square numbers that match the criteria"].join("\n\n")),
+			]).then(([photoId]) => photoId)
+		} else if (!this.buffer.equals(buffer)) {
+			this.buffer = buffer
 			const path = resolve((Math.random() + "").slice(2) + ".jpg")
-			await Bun.write(path, image)
+			await Bun.write(path, buffer)
 			await this.bot.editMessageMedia(
 				{ type: "photo", media: "attach://" + path },
 				{ chat_id: this.chatId, message_id: this.photoId, reply_markup: markup },
 			)
 			setTimeout(() => unlink(path), 1000)
-		} else {
-			this.photoId = await Promise.all([
-				this.bot.sendPhoto(this.chatId, image, { reply_markup: markup }).then(m => m.message_id),
-				this.log(["Please type the square numbers that match the criteria"].join("\n\n")),
-			]).then(([photoId]) => photoId)
 		}
 	}
 
@@ -231,11 +231,9 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 					}
 					clicked++
 				}
-
-				if (cache.queued.at(-1) !== 0) {
-					await this.updateRecaptcha()
-				}
 			}
+
+			await this.updateRecaptcha()
 
 			await driver.sleep(250)
 			cache = (await caches.findOne<RecaptchaCache>({ chatId: this.chatId, messageId: this.photoId! }))!
@@ -278,66 +276,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 		await this.respond(href, quality)
 	}
 
-	private formatSize(size: number) {
-		const i = size == 0 ? 0 : Math.floor(Math.log(size) / Math.log(1024))
-		return (size / Math.pow(1024, i)).toFixed(2) + " " + ["B", "kB", "MB", "GB", "TB"][i]
-	}
-
-	private formatProgress(event: AxiosProgressEvent, quality: string) {
-		return [
-			`Quality: ${quality.toLowerCase()}`,
-			event.total !== undefined
-				? `Progress: ${this.formatSize(event.loaded)} / ${this.formatSize(event.total)}${
-						event.progress !== undefined ? ` (${(event.progress * 100).toFixed(1)}%)` : ""
-					}`
-				: `${this.formatSize(event.loaded)} loaded`,
-			event.rate !== undefined ? `Rate: ${this.formatSize(event.rate)}/s` : null,
-			event.estimated !== undefined ? `Time left: ${event.estimated | 0}s` : null,
-		]
-			.filter(Boolean)
-			.join("\n")
-	}
-
 	private async respond(video: string, quality: string) {
-		await this.log("Downloading video...")
-
-		if (!(await exists(resolve("videos", this.data.show)))) {
-			await mkdir(resolve("videos", this.data.show), { recursive: true })
-		}
-
-		const stream = await axios
-			.get<Stream>(video, {
-				responseType: "stream",
-				onDownloadProgress: async progress => {
-					if (Date.now() - this.lastUpdate < 3000) return
-					if (await this.checkForCleanup()) {
-						piped?.close()
-						return
-					}
-
-					this.lastUpdate = Date.now()
-					this.log(this.formatProgress(progress, quality))
-				},
-			})
-			.then(res => res.data)
-			.catch(() => null)
-
-		const piped = stream?.pipe(
-			createWriteStream(resolve("videos", this.data.show, (this.data.episode + "").padStart(2, "0") + ".mp4")),
-		)
-
-		piped?.on("finish", async () => {
-			await sessions.deleteOne({ chatId: this.chatId, messageId: this.responseId })
-
-			this.log(
-				`Quality: ${quality.toLowerCase()}\n` +
-					[
-						"https://dramaload.zectan.com",
-						encodeURIComponent(this.data.show),
-						(this.data.episode + "").padStart(2, "0") + ".mp4",
-					].join("/"),
-				true,
-			).catch(() => {})
-		})
+		await this.log(`Quality: ${quality.toLowerCase()}\n${video}`, true)
 	}
 }

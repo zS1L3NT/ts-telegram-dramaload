@@ -1,5 +1,4 @@
 import axios from "axios"
-import express from "express"
 import TelegramBot from "node-telegram-bot-api"
 
 import { Cache, caches, DownloadCache, EpisodesCache, sessions, users } from "./db"
@@ -161,9 +160,3 @@ bot.on("callback_query", async ({ from, message, data }) => {
 		}
 	}
 })
-
-const PORT = 9844
-const app = express()
-
-app.use(express.static("videos"))
-app.listen(PORT, () => console.log(`Serving files on port ${PORT}`))
