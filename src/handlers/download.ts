@@ -125,6 +125,21 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 		}
 	}
 
+	private async sendLinks() {
+		const as = await this.driver.findElements(By.css(".mirror_link:first-of-type div a"))
+		const links = await Promise.all(
+			as.map(
+				async a =>
+					`[Download ${await a
+						.getText()
+						.then(t => t.match(/\d+P/)![0]!.toLowerCase())}](${await a.getAttribute("href")})`,
+			),
+		)
+
+		await this.driver.quit()
+		await this.log(links.map(l => "\n" + l).join(""), true)
+	}
+
 	override async start() {
 		await sessions.insertOne({ chatId: this.chatId, messageId: this.responseId })
 
@@ -166,12 +181,7 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 		}
 
 		if (found) {
-			const a = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
-			const href = await a.getAttribute("href")
-			const quality = await a.getText().then(t => t.match(/\d+P/)![0]!)
-
-			await driver.quit()
-			await this.respond(href, quality)
+			await this.sendLinks()
 			return
 		}
 
@@ -268,15 +278,6 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			return
 		}
 
-		const a = await driver.findElement(By.css(".mirror_link:first-of-type div:last-of-type a"))
-		const href = await a.getAttribute("href")
-		const quality = await a.getText().then(t => t.match(/\d+P/)![0]!)
-
-		await driver.quit()
-		await this.respond(href, quality)
-	}
-
-	private async respond(video: string, quality: string) {
-		await this.log(`Quality: ${quality.toLowerCase()}\n${video}`, true)
+		await this.sendLinks()
 	}
 }
