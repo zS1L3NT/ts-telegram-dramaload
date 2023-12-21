@@ -4,9 +4,7 @@ services:
         working_dir: /app
         build: .
         container_name: dramaload
-        environment:
-            TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
-    #         MONGODB_URI: mongodb://mongodb:27017
+        env_file: ./.env
     # mongodb:
     #     image: mongo
     #     container_name: mongodb
