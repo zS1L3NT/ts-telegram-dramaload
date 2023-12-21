@@ -5,10 +5,8 @@ services:
         build: .
         container_name: dramaload
         env_file: ./.env
-    # mongodb:
-    #     image: mongo
-    #     container_name: mongodb
-    #     ports:
-    #       - 27017:27017
-    #     volumes:
-    #         - ./data:/data/db
+    mongodb:
+        image: mongo
+        container_name: mongodb
+        volumes:
+            - ./data:/data/db
