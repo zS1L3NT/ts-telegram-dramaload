@@ -6,9 +6,11 @@ services:
         container_name: dramaload
         environment:
             TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
-            MONGODB_URI: mongodb://mongodb:27017
-    mongodb:
-        image: mongo
-        container_name: mongodb
-        volumes:
-            - ./data:/data/db
+    #         MONGODB_URI: mongodb://mongodb:27017
+    # mongodb:
+    #     image: mongo
+    #     container_name: mongodb
+    #     ports:
+    #       - 27017:27017
+    #     volumes:
+    #         - ./data:/data/db
