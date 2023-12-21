@@ -5,8 +5,9 @@ services:
         build: .
         container_name: dramaload
         env_file: ./.env
-    mongodb:
-        image: mongo
-        container_name: mongodb
-        volumes:
-            - ./data:/data/db
+        network_mode: host
+    # mongodb:
+    #     image: mongo
+    #     container_name: mongodb
+    #     volumes:
+    #         - ./data:/data/db
