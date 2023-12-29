@@ -55,8 +55,9 @@ bot.onText(/^\/search/, async message => {
 		.setup(`Searching for "${search}"...`)
 		.then(search => search.start())
 		.catch(e => {
-			console.log("Error in search action:", e)
-			bot.sendMessage(message.chat.id, "Error occured, please check logs.")
+			const error = e as Error
+			console.log("Error in search action:", error)
+			bot.sendMessage(message.chat.id, `<b><u>${error.name}</u></b>\n${error.message}`, { parse_mode: "HTML" })
 		})
 })
 
@@ -139,8 +140,9 @@ bot.on("callback_query", async ({ from, message, data }) => {
 					.setup("Fetching episodes...")
 					.then(episodes => episodes.start())
 					.catch(e => {
-						console.log("Error in download action:", e)
-						bot.sendMessage(chatId, "Error occured, please check logs.")
+						const error = e as Error
+						console.log("Error in download action:", error)
+						bot.sendMessage(chatId, `<b><u>${error.name}</u></b>\n${error.message}`, { parse_mode: "HTML" })
 					})
 				break
 			case "download":
@@ -154,8 +156,9 @@ bot.on("callback_query", async ({ from, message, data }) => {
 					.setup("Fetching download url...")
 					.then(download => download.start())
 					.catch(e => {
-						console.log("Error in download action:", e)
-						bot.sendMessage(chatId, "Error occured, please check logs.")
+						const error = e as Error
+						console.log("Error in download action:", error)
+						bot.sendMessage(chatId, `<b><u>${error.name}</u></b>\n${error.message}`, { parse_mode: "HTML" })
 					})
 		}
 	}
