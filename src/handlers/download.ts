@@ -225,7 +225,9 @@ export default class DownloadHandler extends Handler<DownloadCache["actions"][nu
 			}
 
 			if (clicked !== cache.queued.length) {
-				const size = (await driver.findElements(By.css("table tbody tr"))).length
+				let size = (await driver.findElements(By.css("table tbody tr"))).length
+				if ([6, 8].includes(size)) size /= 2
+
 				for (const square of cache.queued.slice(clicked)) {
 					if (square === 0) {
 						await driver.executeScript("document.querySelector('#recaptcha-verify-button').click()")
